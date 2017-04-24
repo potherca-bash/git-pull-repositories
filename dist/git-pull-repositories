@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+
+# Copyright (C) 2017  Potherca <potherca@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -o errexit  # Exit script when a command exits with non-zero status.
+set -o errtrace # Exit on error inside any functions or sub-shells.
+set -o nounset  # Exit script on use of an undefined variable.
+set -o pipefail # Return exit status of the last command in the pipe that exited with a non-zero exit code
+
+
+
+readonly COLOR_DIM="$(tput dim)"
+readonly COLOR_GREEN="$(tput setaf 2)"
+readonly COLOR_RED="$(tput setaf 1)"
+readonly COLOR_RESET="$(tput sgr0)"
+readonly COLOR_YELLOW="$(tput setaf 3)"
+
+
+readonly EX_OK=0
+readonly EX_NOT_ENOUGH_PARAMETERS=66
+readonly EX_DIRECTORY_NOT_EXISTS=67
+readonly EX_NOT_A_DIRECTORY=68
+readonly EX_ERROR_UPDATING=69
+
+
+error() {
+echo -e "${COLOR_RED}ERROR${COLOR_RESET} ${1}\n" >&2
+exit "${2}"
+}
+
+
+validate_directory() {
+if [[ ! -e "${1}" ]];then
+error "The given directory '${1}' does not exist" "${EX_DIRECTORY_NOT_EXISTS}"
+elif [[ ! -d "${1}" ]];then
+error "The given directory '${1}' is not a directory" "${EX_NOT_A_DIRECTORY}"
+fi
+}
+
+
+git_pull_repository() {
+
+local iExitCode sDirectory sRootRepoHead
+
+iExitCode="${EX_OK}"
+validate_directory "${1}"
+
+local -r sDirectory=$(unset CDPATH && cd "${1}"/ && pwd -P )
+local -r sRootRepoHead="${2:-}"
+
+pushd "${sDirectory}" > /dev/null
+
+sRepo=$(basename "${sDirectory}")
+sRepoHead="$(git rev-list --parents HEAD 2> /dev/null | tail -1 || echo '')"
+
+if [[ "${sRootRepoHead}" = "${sRepoHead}" || "${sRepoHead}" = "" ]];then
+sBranch="${COLOR_DIM}(not a git repo)${COLOR_RESET}"
+printf ' ======> Not updating %s branch of "%s" %s\n' "${COLOR_YELLOW}${sBranch}${COLOR_RESET}" "${sRepo}" "${sBranch}" "${COLOR_DIM}(not on master)${COLOR_RESET}"
+else
+sBranch=$(git symbolic-ref --quiet --short -q HEAD 2>/dev/null)
+
+if [[ "${sBranch}" = 'master' ]];then
+printf ' ======> Updating %s branch of "%s"\n' "${COLOR_GREEN}${sBranch}${COLOR_RESET}" "${sRepo}"
+git pull --ff-only --dry-run origin "${sBranch}" || { printf ' ! ERROR Failed updating %s of "%s"\n\n' "${sBranch}" "${sRepo}" && iExitCode="${EX_ERROR_UPDATING}"; }
+else
+printf ' ======> Not updating %s branch of "%s" %s\n' "${COLOR_YELLOW}${sBranch}${COLOR_RESET}" "${sRepo}" "${sBranch}" "${COLOR_DIM}(not on master)${COLOR_RESET}"
+fi
+fi
+
+popd > /dev/null
+
+return "${iExitCode}"
+}
+
+
+git_pull_repositories() {
+
+local iExitCode sRootRepoHead sDirectory
+
+iExitCode="${EX_OK}"
+
+if [[ "$#" -lt 1 ]];then
+error 'One parameter expected' "${EX_NOT_ENOUGH_PARAMETERS}"
+else
+validate_directory "${1}"
+
+local -r sRootDirectory=$(unset CDPATH && cd "${1}" && pwd -P )
+
+pushd "${sRootDirectory}" > /dev/null
+readonly sRootRepoHead="$(git rev-list --parents HEAD 2> /dev/null | tail -1 || echo '')"
+popd > /dev/null
+
+for sDirectory in ${sRootDirectory}/*/;do
+git_pull_repository "${sDirectory}" "${sRootRepoHead}" || iExitCode="${EX_ERROR_UPDATING}"
+iResult=$?
+if [[ "${iResult}" != "${EX_OK}" ]];then
+iExitCode="${iResult}"
+fi
+done
+fi
+
+if [[ "${iExitCode}" != "${EX_OK}" ]];then
+error "Encountered a problem updating repositories" "${iExitCode}"
+fi
+
+return "${iExitCode}"
+}
+
+if [[ ${BASH_SOURCE[0]} != $0 ]]; then
+export -f git_pull_repositories
+else
+git_pull_repositories "${@:-}"
+exit ${?}
+fi
+
+# EOF
