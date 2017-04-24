@@ -23,7 +23,7 @@ git_pull_repository() {
 
         if [[ "${sBranch}" = 'master' ]];then
             printf ' ======> Updating %s branch of "%s"\n' "${COLOR_GREEN}${sBranch}${COLOR_RESET}" "${sRepo}"
-            git pull --ff-only --dry-run origin "${sBranch}" || { printf ' ! ERROR Failed updating %s of "%s"\n\n' "${sBranch}" "${sRepo}" && iExitCode="${EX_ERROR_UPDATING}"; }
+            git pull --ff-only origin "${sBranch}" || { printf ' ! ERROR Failed updating %s of "%s"\n\n' "${sBranch}" "${sRepo}" && iExitCode="${EX_ERROR_UPDATING}"; }
         else
             printf ' ======> Not updating %s branch of "%s" %s\n' "${COLOR_YELLOW}${sBranch}${COLOR_RESET}" "${sRepo}" "${sBranch}" "${COLOR_DIM}(not on master)${COLOR_RESET}"
         fi
